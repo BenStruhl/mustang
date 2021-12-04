@@ -302,13 +302,15 @@ pub unsafe fn fork() -> rustix::io::Result<Option<rustix::process::Pid>> {
             // Protect the allocator lock while the fork is in progress, to
             // avoid deadlocks in the child process from allocations.
             match crate::allocator::INNER_ALLOC.lock(|_| rustix::runtime::fork())? {
-                rustix::process::Pid::NONE => {
+                None => {
+                    // After the fork, update the child's thread id.
                     #[cfg(feature = "threads")]
                     set_current_thread_id(rustix::thread::gettid());
+
                     funcs.child.iter().for_each(|func| func());
                     Ok(None)
                 }
-                pid => {
+                Some(pid) => {
                     funcs.parent.iter().for_each(|func| func());
                     Ok(Some(pid))
                 }
@@ -323,8 +325,7 @@ pub unsafe fn fork() -> rustix::io::Result<Option<rustix::process::Pid>> {
                 let raw = *libc::__errno_location();
                 Err(rustix::io::Error::from_raw_os_error(raw))
             }
-            0 => Ok(None),
-            pid => Ok(Some(rustix::process::Pid::from_raw(pid as _))),
+            pid => Ok(rustix::process::Pid::from_raw(pid as _)),
         }
     }
 }
